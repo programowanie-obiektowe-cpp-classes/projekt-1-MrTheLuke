@@ -8,16 +8,15 @@
 #include <numeric>
 #include <vector>
 
-
 // Klasa reprezentuj¹ca firmê
 // Odpowiada za zarz¹dzanie pracownikami, finansami, produkcj¹, magazynowaniem i sprzeda¿¹.
 class Company
 {
 public:
+    // Sta³e definiuj¹ce limity i parametry gry
     static constexpr int    MAX_LOAN_TERM       = 24;  // Maksymalny czas sp³aty kredytu
     static constexpr double MAX_DEBT_MULTIPLIER = 3.0; // Maksymalne zad³u¿enie w stosunku do wartoœci firmy
     static constexpr int    AVERAGE_MONTHS      = 3;   // Liczba miesiêcy do obliczania œredniej wartoœci firmy
-
 
     // Inicjalizacja firmy z pocz¹tkowym stanem finansowym
     Company()
@@ -89,8 +88,8 @@ public:
     }
 
 
-    /* Funkcja do obliczeñ tylko dla pierwszej tury 
-    (np. ¿eby nie wyskakiwa³ b³¹d ¿e wartoœæ firmy jest zerowa 
+    /* Funkcja do obliczeñ tylko dla pierwszej tury
+    (np. ¿eby nie wyskakiwa³ b³¹d ¿e wartoœæ firmy jest zerowa
     i nie mo¿na wzi¹æ kredytu)
     */
     void initializeCurrentValue()
@@ -131,43 +130,6 @@ public:
         repayLoans();
     }
 
-    double getTotalDebt() const
-    {
-        double totalDebt = 0;
-        for (const auto& loan : m_loans)
-        {
-            totalDebt += loan.amount;
-        }
-        return totalDebt;
-    }
-
-    double getCurrentInstallment() const
-    {
-        double totalInstallment = 0;
-        for (const auto& loan : m_loans)
-        {
-            if (loan.repaymentMonths > 0)
-            {
-                totalInstallment += loan.amount / loan.repaymentMonths;
-                totalInstallment += (loan.amount * loan.interestRate / loan.repaymentMonths);
-            }
-        }
-        return totalInstallment;
-    }
-
-    int getRemainingRepaymentMonths() const
-    {
-        int maxMonths = 0;
-        for (const auto& loan : m_loans)
-        {
-            if (loan.repaymentMonths > maxMonths)
-            {
-                maxMonths = loan.repaymentMonths;
-            }
-        }
-        return maxMonths;
-    }
-
     // Obliczenie ca³kowitej pojemnoœci magazynu.
     double getWarehouseCapacity() const
     {
@@ -183,6 +145,7 @@ public:
     }
 
     // Wziêcie kredytu
+
     void takeLoan(double amount, int repaymentMonths)
     {
         initializeCurrentValue(); // Zapewnij, ¿e m_currentValue jest obliczone
@@ -206,21 +169,63 @@ public:
         m_bankBalance += amount;
     }
 
-    bool   isBankrupt() const { return m_bankBalance <= 0; } // Czy firma zbankrutowa³a
-    bool   hasWon(double targetValue) const { return m_currentValue >= targetValue; } // Czy firma osi¹gnê³a wymagany cel wartoœci
+    
+    bool isBankrupt() const { return m_bankBalance <= 0; } // Czy firma zbankrutowa³a
+    bool hasWon(double targetValue) const { return m_currentValue >= targetValue; } // Czy firma osi¹gnê³a wymagany cel wartoœci
+
     // Gettery
     double getBankBalance() const { return m_bankBalance; }
     double getLastIncome() const { return m_lastIncome; }
     double getLastProduction() const { return m_lastProduction; }
     double getLastSales() const { return m_lastSales; }
     double getCurrentValue() const { return m_currentValue; }
+    double getTotalDebt() const
+    {
+        double totalDebt = 0;
+        for (const auto& loan : m_loans)
+        {
+            totalDebt += loan.amount;
+        }
+        return totalDebt;
+    }
+    double getCurrentInstallment() const
+    {
+        double totalInstallment = 0;
+        for (const auto& loan : m_loans)
+        {
+            totalInstallment += loan.calculateInstallment();
+        }
+        return totalInstallment;
+    }
+    int getRemainingRepaymentMonths() const
+    {
+        int maxMonths = 0;
+        for (const auto& loan : m_loans)
+        {
+            maxMonths = std::max(maxMonths, loan.repaymentMonths);
+        }
+        return maxMonths;
+    }
 
 private:
+    // Kredyt
     struct Loan
     {
-        double amount;
-        int    repaymentMonths;
-        double interestRate;
+        double amount;          // Kwota kredytu
+        int    repaymentMonths; // Liczba miesiêcy do sp³aty
+        double interestRate;    // Oprocentowanie
+
+        // Obliczanie wysokoœci raty dla kredytu
+        double calculateInstallment() const
+        {
+            if (repaymentMonths > 0)
+            {
+                double installment = amount / repaymentMonths;
+                double interest    = amount * interestRate / repaymentMonths;
+                return installment + interest;
+            }
+            return 0.0;
+        }
     };
 
     // Sp³acanie kredytów
@@ -230,21 +235,17 @@ private:
 
         for (auto& loan : m_loans)
         {
-            if (loan.repaymentMonths > 0)
+            // Obliczanie raty
+            double installment = loan.calculateInstallment();
+            totalRepayment += installment;
+
+            loan.amount -= (loan.amount / loan.repaymentMonths);
+            loan.repaymentMonths--;
+
+            // Jeœli kredyt zosta³ ca³kowicie sp³acony
+            if (loan.repaymentMonths == 0 || loan.amount <= 0)
             {
-                // Obliczanie raty
-                double installment = loan.amount / loan.repaymentMonths;
-                double interest    = loan.amount * loan.interestRate / loan.repaymentMonths;
-
-                totalRepayment += (installment + interest);
-                loan.amount -= installment;
-                loan.repaymentMonths--;
-
-                // Jeœli kredyt zosta³ ca³kowicie sp³acony
-                if (loan.repaymentMonths == 0 || loan.amount <= 0)
-                {
-                    loan.amount = 0;
-                }
+                loan.amount = 0;
             }
         }
 
@@ -256,15 +257,15 @@ private:
         m_bankBalance -= totalRepayment;
     }
 
-    double m_bankBalance;       // Saldo firmy
-    double m_currentValue;      // Bie¿¹ca wartoœæ firmy
-    double m_lastIncome;        // Przychody w ostatnim miesi¹cu
-    double m_lastProduction;    // Produkcja w ostatnim miesi¹cu
-    double m_lastSales;         // Sprzeda¿ w ostatnim miesi¹cu
-    bool m_isInitialized;       // Flaga do jednorazowej inicjalizacji na pocz¹tku gry
-    std::vector< std::unique_ptr< Employee > > m_employees;   // Lista pracowników
-    std::vector< Loan >                        m_loans;       // Lista kredytów
-    std::vector< double >                      m_lastIncomes; // Historia ostatnich przychodów
+    double m_bankBalance;    // Saldo firmy
+    double m_currentValue;   // Wartoœæ firmy
+    double m_lastIncome;     // Ostatni przychód
+    double m_lastProduction; // Ostatnia produkcja
+    double m_lastSales;      // Ostatnia sprzeda¿
+    bool m_isInitialized;    // Flaga inicjalizacji
+    std::vector< std::unique_ptr< Employee > > m_employees;      // Lista pracowników
+    std::vector< Loan >                        m_loans;          // Lista kredytów
+    std::vector< double >                      m_lastIncomes;    // Ostatnie przychody
 };
 
 #endif // COMPANY_HPP
